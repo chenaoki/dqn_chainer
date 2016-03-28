@@ -5,17 +5,12 @@ Copyright (c) 2015 Naoto Yoshida All Right Reserved.
 """
 
 import copy
-
 import pickle
 import numpy as np
 import cv2
-import scipy.misc as spm
 import sys
 import matplotlib
 import matplotlib.pyplot as plt
-
-from chainer import cuda, FunctionSet, Variable, optimizers
-import chainer.functions as F
 
 from rlglue.agent.Agent import Agent
 from rlglue.agent import AgentLoader as AgentLoader
@@ -23,49 +18,71 @@ from rlglue.types import Action
 
 from surface_indices import *
 
-#from dqn_agent_nature import DQN_class
+from DQN import DQN_class
+
 
 class dqn_agent(Agent):  # RL-glue Process
+    # parameters
+    obsSize = 17
+    obsMin = -90.0
+    obsMax = 40.0
+    imgSize = 128
+    imgDepth = 1 
+    epsilon = 1.0  
+    enable_controller=np.arange(10)
+    state = np.zeros((imgDepth, imgSize, imgSize), dtype=np.float32)
     lastAction = Action()
     policyFrozen = False
     cnt = 0
 
+    def obs2state(self, observation):
+      self.cnt+=1
+      tmp = np.zeros((obsSize,obsSize), dtype=np.float32)
+      for i, v in enumerate(observation.doubleArray[:obsSize*obsSize]):
+          tmp[surface_indices[i]] = v
+      tmp = (tmp - self.obsMin) / (self.obsMax - self.obsMin) # Normalization 
+      tmp = cv2.resize(tmp, (self.imgSize, self.imgSize))
+      cv2.imshow('observation',tmp)
+      cv2.waitKey(100)
+      self.state[0] = tmp
+
     def agent_init(self, taskSpec):
-      # Some initializations for rlglue
       self.lastAction = Action()
-
+      self.state = np.zeros((self.imgDepth, self.imgSize, self.imgSize), dtype=np.float32)
       self.time = 0
-      self.epsilon = 1.0  # Initial exploratoin rate
-
-      # Pick a DQN from DQN_class
-      #self.DQN = DQN_class()  # Default is for "Pong".
-      
+      self.DQN = DQN_class(
+              enable_controller=self.enable_controller, 
+              imgSize=self.imgSize, imgDepth=self.imgDepth )
       print 'agent_init done'
 
     def agent_start(self, observation):
+      self.obs2state(observation)
+      
       returnAction = Action()
+      #state_ = cuda.to_gpu(np.asanyarray(
+      #    self.state.reshape(1, self.imgDepth, self.imgSize, self.imgSize), 
+      #    dtype=np.float32))
+      #action, Q_now = self.DQN.e_greedy(state_, self.epsilon)
       returnAction.intArray = [-1]
+      
+      self.lastAction = copy.deepcopy(returnAction)
+      self.last_state = self.state.copy()
       return returnAction
 
     def agent_step(self, reward, observation):
-      # Observation display
+      self.obs2state(observation)
+     
       returnAction = Action()
       actNum = -1
-      #if self.cnt % 100 < 5: 
-      #  actNum = (self.cnt // 100) % 9
-      img = np.zeros((17,17), dtype=np.float32)
-      for i, v in enumerate(observation.doubleArray[:17*17]):
-          img[surface_indices[i]] = v
-      img = (img + 90.0) / 130.0
-      img = cv2.resize(img, (128, 128))
-      cv2.imshow('observation',img)
       k = cv2.waitKey(0)
       if k in [ord(v) for v in '123456789']:
         actNum = int(unichr(k)) - 1
       if k == 27:
         raise NameError('Escape')
       returnAction.intArray = [actNum]
-      self.cnt+=1
+      
+      self.lastAction = copy.deepcopy(returnAction)
+      self.last_state = self.state.copy()
       return returnAction
 
     def agent_end(self, reward):  # Episode Terminated
@@ -78,7 +95,7 @@ class dqn_agent(Agent):  # RL-glue Process
 
       if inMessage.startswith("what is your name?"):
         return "my name is skeleton_agent!"
-      
+
       if inMessage.startswith("freeze learning"):
           self.policyFrozen = True
           return "message understood, policy frozen"
@@ -104,6 +121,7 @@ if __name__ == "__main__":
       envIP = sys.argv[1]
     print 'connecting ' + envIP
     try:
-      AgentLoader.loadAgent(dqn_agent(), envIP)
+      #AgentLoader.loadAgent(dqn_agent(), envIP)
+      AgentLoader.loadAgent(dqn_agent())
     finally:
       cv2.destroyAllWindows()
