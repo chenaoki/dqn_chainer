@@ -55,14 +55,12 @@ class dqn_agent(Agent):  # RL-glue Process
       self.state = self.obs2state(observation)
       self.time+=1
 
-      index_action = np.random.randint(0, len(self.actions))
-      returnAction = Action(numInts=1)
-      returnAction.intArray = [self.actions[index_action]]
+      action = self.egreedy()
 
-      self.lastAction = copy.deepcopy(returnAction)
+      self.lastAction = copy.deepcopy(action)
       self.lastState = self.state.copy()
       print "done"
-      return returnAction
+      return action
 
     def agent_step(self, reward, observation):
       print "[Age] step ...",
@@ -71,40 +69,13 @@ class dqn_agent(Agent):  # RL-glue Process
       self.state = self.obs2state(observation)
       self.time+=1
 
-      # Exploration decays (eps update)
-      if self.policyFrozen is False:  # Learning ON/OFF
-        if self.initial_exploration < self.time:
-          self.epsilon -= 1.0/10**6
-          if self.epsilon < 0.1:
-              self.epsilon = 0.1
-        else:  # Initial Exploation Phase
-          #print "Initial Exploration : ", 
-          #print "%d/%d steps" % (self.time, self.initial_exploration)
-          self.epsilon = 1.0
-      else:  # Evaluation
-        self.epsilon = 0.05
-      print 'epsilon : {0},'.format( self.epsilon ),
-
-      # Action decision (e-greedy)
-      s = Variable(cuda.to_gpu( self.state[np.newaxis,:,:,:] ))
-      Q_now = self.model(s).data
-      if np.random.rand() < self.epsilon:
-        index_action = np.random.randint(0, len(self.actions))
-        print "RANDOM,",
-      else:
-        index_action = np.argmax(Q_now.get())
-        print "GREEDY,",
-        print Q_now, 
-      print 'action : {0},'.format(index_action),
-      returnAction = Action(numInts=1)
-      returnAction.intArray = [self.actions[index_action]]
-
+      action = self.egreedy()
       self.updateModel(reward)
 
-      self.lastAction = copy.deepcopy(returnAction)
+      self.lastAction = copy.deepcopy(action)
       self.lastState = self.state.copy()
       print "done"
-      return returnAction
+      return action
 
     def agent_end(self, reward):  # Episode Terminated
       self.updateModel(reward)
@@ -140,6 +111,37 @@ class dqn_agent(Agent):  # RL-glue Process
       retImage = np.array(observation.doubleArray).astype(np.float32)
       retImage = retImage.reshape((self.imgSize, self.imgSize))
       return retImage[np.newaxis, :, :]
+
+    def egreedy(self):
+      
+      # Exploration decays (eps update)
+      if self.policyFrozen is False:  # Learning ON/OFF
+        if self.initial_exploration < self.time:
+          self.epsilon -= 1.0/10**6
+          if self.epsilon < 0.1:
+              self.epsilon = 0.1
+        else:  # Initial Exploation Phase
+          #print "Initial Exploration : ", 
+          #print "%d/%d steps" % (self.time, self.initial_exploration)
+          self.epsilon = 1.0
+      else:  # Evaluation
+        self.epsilon = 0.05
+      print 'epsilon : {0},'.format( self.epsilon ),
+      
+      s = Variable(cuda.to_gpu( self.state[np.newaxis,:,:,:] ))
+      Q_now = self.model(s).data
+      if np.random.rand() < self.epsilon:
+        index_action = np.random.randint(0, len(self.actions))
+        print "RANDOM,",
+      else:
+        index_action = np.argmax(Q_now.get())
+        print "GREEDY,",
+        print Q_now, 
+      print 'action : {0},'.format(index_action),
+      action = Action(numInts=1)
+      action.intArray = [self.actions[index_action]]
+      return action 
+
 
     def updateModel(self, reward):
       
